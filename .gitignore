@@ -1,0 +1,45 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# VS Code local state
+.vscode/.ropeproject/
+
+# Generic build output
+build/
+out/
+dist/
+Debug/
+Release/
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.d
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Python tooling
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# EasyEDA / EDA temporary files
+*.autosave
+*.bak
+*.tmp
+*.log
+
+# Fabrication outputs should be committed only as intentional release artifacts,
+# not from arbitrary local export folders.
+PCB/fabrication/_work/
