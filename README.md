@@ -2,25 +2,27 @@
 
 WTK.PowerSource is a dual-channel programmable bench power supply focused on **low-cost, repairable hardware**, analog safety loops, digital supervision, and practical component sourcing.
 
-The project combines two isolated DC power domains with a single **STM32F103C8T6** controller. Each output channel uses a switching preregulator followed by a linear pass stage so that the switching converter carries most of the power conversion while the linear stage provides the final CV/CC regulation, transient control, and output quality.
+The project combines two isolated DC power domains with a single **STM32F103C8T6** controller. Each output channel uses a switching preregulator followed by a linear pass stage so the switching converter handles most of the power conversion while the linear stage performs the final CV/CC regulation and output control.
 
-> **Current status — August 2026:** architecture and protection strategy are being consolidated before the first formal schematic and PCB revision. Values marked as provisional in the technical specification still require bench characterization. The repository must not present unqualified targets as guaranteed product specifications.
+> **Current status — August 2026:** architecture and protection strategy are being converted into the first formal schematic. The project documentation is maintained as version-controlled Markdown under [`docs/`](docs/); targets still marked PROVISIONAL/TUNE are not guaranteed specifications.
 
 ## Project goals
 
 - Two electrically isolated and independently controlled output channels.
+- **One MCU only**: STM32F103C8T6/Blue Pill class.
 - Initial operation from **24 VDC isolated supplies per channel**.
-- No artificial top-end voltage limit in Rev.1: the maximum regulated output is whatever remains after the real headroom and losses of the preregulator, linear stage, shunt, relay, wiring, and source sag.
-- Future electrical envelope planned for **up to 36 VDC input per channel** and approximately **30 V output per channel**, without requiring that capability in the first build.
-- Up to **5 A output current per channel**, subject to the channel power and thermal envelope.
-- Approximately **60 W per channel** as the initial power-class target.
-- Series operation for higher differential voltage and symmetric `+V / COM / -V` operation.
-- Analog CV and CC loops that remain functional independently of firmware timing.
-- Hardware OVP/OCP/thermal shutdown paths and fail-safe output relays.
-- Current-source operation using the same CV/CC hardware: the user sets target current and a voltage-compliance limit while the analog CC loop performs the fast regulation.
+- No artificial top-end voltage limit in Rev.1: maximum regulated output is whatever remains after the real preregulator, pass-stage, shunt, relay, wiring, and PSU drops.
+- Future design envelope of **up to 36 VDC input per channel** and approximately **30 V output per channel** when powered appropriately.
+- Up to **5 A/channel**, subject to channel power and thermal limits.
+- Approximately **60 W/channel** initial power class.
+- Series operation for higher differential voltage and symmetric `+V / COM / -V` use.
+- Analog CV/CC loops independent of firmware timing.
+- Hardware OVP/OCP/thermal authority plus fail-safe output relays.
+- Current-source user mode using target current plus a voltage-compliance ceiling.
 - Output ripple/noise acceptance target of approximately **25 mVpp or better** in normal DC CV operation, subject to bench qualification.
-- Current measurement resolution target in the **5–10 mA** range.
-- Two-layer, **1 oz copper** PCB as the fabrication baseline, using wide pours/traces and explicit power-wire jumpers where routing 5 A exclusively through PCB copper is impractical.
+- Current measurement target in the **5–10 mA usable-resolution** class.
+- Two-layer, **1 oz copper** PCB with wide copper and explicit power-wire jumper reinforcement where useful.
+- Components chosen with realistic low-quantity sourcing and repair in Brazil in mind.
 
 ## High-level architecture
 
@@ -40,7 +42,7 @@ The project combines two isolated DC power domains with a single **STM32F103C8T6
        │                                │
  optional eFuse                    optional eFuse
        │                                │
- switching preregulator            switching preregulator
+ buck preregulator                 buck preregulator
        │                                │
       VPRE_A                           VPRE_B
        │                                │
@@ -54,107 +56,68 @@ The project combines two isolated DC power domains with a single **STM32F103C8T6
      OUT A                            OUT B
 ```
 
-The two power domains remain isolated so the outputs can be used independently or reconfigured in series. The normal product configuration has **no USB, PC, or debugger connection during operation**; only the isolated AC/DC supplies power the instrument.
+The two power domains remain isolated so the outputs can be independent or connected in series. During normal operation the instrument has **no USB, PC, or debugger connection**; only the isolated AC/DC supplies power the system.
 
-## Current hardware baseline
+## Current hardware direction
 
 | Block | Current direction |
 |---|---|
-| Main MCU | 1 × STM32F103C8T6 / Blue Pill class |
+| MCU | 1 × STM32F103C8T6 / Blue Pill class |
 | Input supplies | 2 × isolated 24 VDC supplies initially |
-| Future input ceiling | up to 36 VDC per channel |
-| Preregulator | XL4016-based buck integrated on the project PCB; external-module fallback should remain possible |
-| Linear pass transistor | 1 × TIP36C per channel initially |
-| Output disconnect | fail-safe relay `K_OUT` per channel |
-| Current shunt | ~50 mΩ low-side, initial implementation using 2 × 0.10 Ω / 5 W in parallel |
-| Precision telemetry ADC | ADS1115 per isolated domain |
-| Thermal multiplexing | CD4051-class analog mux for multiple NTC channels |
-| VPRE command | DAC-based, MCP4725-class architecture currently preferred |
-| Channel-B digital isolation | fast optocouplers for critical PWM paths + isolated I²C for ADC/DAC telemetry/control |
-| eFuse | optional/DNP-capable; MP5046 family is a technical candidate but not a production-frozen PN |
-| Passive fuse | conventional external fuse per channel, always expected in the finished assembly |
-| PCB | 2 layers, 1 oz copper, wide power pours and optional soldered power-wire reinforcement |
-| Power semiconductors | mounted with thermal strategy suitable for one heatsink assembly per channel where practical |
+| Future input ceiling | 36 VDC per channel maximum |
+| Preregulator | XL4016-based buck integrated on PCB, with external-module fallback |
+| Linear pass transistor | 1 × TIP36C/channel initially |
+| Output disconnect | normally-open fail-safe `K_OUT` relay/channel |
+| Current shunt | ~50 mΩ low-side, initial 2 × 0.10 Ω / 5 W parallel concept |
+| Telemetry ADC | ADS1115/channel domain |
+| Thermal expansion | CD4051-class mux + multiple NTCs |
+| VPRE command | MCP4725-class DAC direction |
+| Channel-B isolation | fast optocouplers for PWM/setpoints + isolated I2C |
+| eFuse | optional/DNP-capable; MP5046 family is a candidate, not a frozen production PN |
+| Passive fuse | conventional external fuse/channel, with more margin than eFuse |
+| PCB | 2 layers, 1 oz copper, wide pours and optional soldered power-wire reinforcement |
 
 ## Protection philosophy
 
-WTK.PowerSource intentionally uses multiple independent protection layers.
-
 ```text
-isolated PSU internal protection
+commercial PSU internal protection
         ↓
 external conventional fuse
         ↓
 optional eFuse near normal input-current limit
         ↓
-preregulator fixed hardware limits
+preregulator hardware limits
         ↓
 analog CC loop
         ↓
 analog OCP / OVP / thermal protection
         ↓
-K_OUT physical output disconnect
+K_OUT physical disconnect
 ```
 
-The **eFuse is intended to sit close to the maximum legitimate input-current envelope**. The passive fuse deliberately has more margin and exists mainly for catastrophic faults, wiring protection, eFuse-DNP builds, or failures where the active protection no longer controls the current. Because the commercial PSU itself will generally current-limit, the passive fuse is not treated as the normal operating limiter.
+The eFuse, when used, is configured close to the legitimate maximum input-current envelope. The passive fuse intentionally has more margin and exists mainly for catastrophic faults, wiring protection, or eFuse-DNP/failure scenarios.
 
-Critical shutdown functions must not depend on the MCU noticing a fault first. Firmware may supervise, log, command, and re-arm protections, but hardware protection paths retain authority to remove preregulator enable and/or open the output relay.
+Critical shutdown functions do not rely on firmware noticing the event first.
 
-## CV and current-source operation
+## Voltage and current-source operation
 
-The same analog control hardware supports two user-facing operating styles.
+The same analog hardware supports both workflows.
 
-**Voltage-oriented operation:**
+**Voltage-oriented:**
 
 ```text
-VSET = desired output voltage
+VSET = requested voltage
 ISET = current limit
 ```
 
-**Current-source operation:**
+**Current-source:**
 
 ```text
-ISET = desired output current
+ISET = requested current
 VSET = compliance-voltage ceiling
 ```
 
-No firmware PID is required for the fast current loop. The firmware configures setpoints and slowly optimizes `VPRE`; the analog CV/CC loops determine which limit is active.
-
-## Measurement and thermal supervision
-
-The measurement architecture is designed around calibrated low-side current shunts and ADS1115-class 16-bit ADCs. Current and voltage are priority telemetry signals; slower channels are multiplexed for thermal and rail supervision.
-
-Planned temperature points include, as useful for the final mechanical design:
-
-- commercial PSU / incoming power section;
-- preregulator / buck hot spot;
-- TIP36C pass transistor;
-- shared channel heatsink;
-- additional spare thermal point.
-
-The exact NTC count and placement remain subject to PCB and heatsink layout.
-
-## Isolation
-
-Only **one MCU** is used. Channel B remains a separate electrical domain.
-
-- Fast setpoint/PWM signals cross the barrier through fast optocouplers such as 6N137-class devices.
-- Telemetry and slow digital control can use an isolated I²C path.
-- Channel-B hardware protections remain local to Channel B.
-- A persistent Channel-B communication failure is a fail-safe condition: firmware should disable the affected output rather than continue operating without valid telemetry/control.
-- STM32F103 I²C recovery must include transaction timeout and bus-recovery handling independent of the global watchdog.
-
-## PCB philosophy
-
-The board is intentionally designed around common fabrication constraints rather than requiring 2 oz copper.
-
-- 2-layer FR-4.
-- 1 oz copper baseline.
-- Wide traces and copper pours for high-current paths.
-- Top/bottom copper sharing and via stitching where useful.
-- Dedicated PTH points for short power-wire jumpers when this is cleaner than very large PCB traces.
-- Kelvin routing for shunts and other low-level sense points must remain separate from power-current paths and jumper voltage drops.
-- Manual assembly and component replacement are design considerations.
+No fast firmware current PID is required. The analog loops select whichever limit is active; firmware configures setpoints, optimizes VPRE slowly, and presents the operating state.
 
 ## Repository layout
 
@@ -172,47 +135,66 @@ WTK.PowerSource/
 │   ├── README.md
 │   ├── config/
 │   ├── src/
-│   │   ├── app/
-│   │   ├── bsp/
-│   │   ├── control/
-│   │   ├── drivers/
-│   │   ├── hardware/
-│   │   ├── measurement/
-│   │   ├── protection/
-│   │   └── ui/
 │   ├── tests/
 │   ├── tools/
 │   └── third_party/
 └── docs/
     ├── README.md
-    └── WTK_PowerSource_Especificacao_Tecnica_Rev_B4.pdf
+    ├── 01-Project-Scope-and-Requirements.md
+    ├── 02-Electrical-Architecture.md
+    ├── 03-Input-Preregulator-and-Power-Stage.md
+    ├── 04-CV-CC-and-Output-Control.md
+    ├── 05-Measurement-Telemetry-and-Calibration.md
+    ├── 06-Isolation-and-Communication.md
+    ├── 07-Protection-and-Fault-Handling.md
+    ├── 08-Thermal-Mechanical-and-PCB.md
+    ├── 09-Firmware-Architecture.md
+    ├── 10-Schematic-Organization-and-Net-Naming.md
+    ├── 11-Bring-Up-and-Validation-Plan.md
+    ├── 12-BOM-and-Sourcing.md
+    └── 13-Open-Items-and-Decision-Log.md
 ```
 
-- [`PCB/README.md`](PCB/README.md) describes schematic/PCB source and manufacturing-artifact conventions.
-- [`Firmware/README.md`](Firmware/README.md) describes the planned firmware responsibilities and safety boundaries.
-- [`docs/README.md`](docs/README.md) indexes the engineering documentation.
+Start with [`docs/README.md`](docs/README.md) for the documentation index.
 
-## Design status and open engineering gates
+- [`PCB/README.md`](PCB/README.md) — EasyEDA/PCB organization and fabrication rules.
+- [`Firmware/README.md`](Firmware/README.md) — planned firmware responsibilities and safety boundaries.
+- [`docs/`](docs/) — canonical design documentation and validation plan.
 
-The first production PCB is **not yet released**. Before hardware is considered production-ready, the project still requires bench validation of at least:
+## Schematic direction
 
-- actual XL4016 efficiency, ripple, low-output/high-current thermal behavior, and external-feedback control;
-- sourcing fallback for the XL4016 power stage;
-- SOA trajectory of the single TIP36C during short-circuit transients and VPRE foldback;
-- CV/CC stability and compensation;
-- output ripple/noise under representative loads;
-- current-measurement accuracy and effective 5–10 mA resolution;
-- reverse-energy/backfeed behavior into VPRE and the buck stage;
-- output-relay sequencing and series-mode interlocks;
-- thermal limits, NTC placement, fan strategy, and heatsink performance;
-- isolated-I²C recovery and Channel-B communication fault handling;
-- waveform/setpoint fidelity between Channel A and Channel B where applicable.
+The current EasyEDA organization uses eight **real electrical** sheets:
 
-The detailed Rev.B.4 engineering baseline is stored under [`docs/`](docs/).
+1. `CH_A_INPUT_BUCK`
+2. `CH_A_LINEAR_CV_CC`
+3. `CH_A_MEAS_THERMAL`
+4. `CH_B_INPUT_BUCK`
+5. `CH_B_LINEAR_CV_CC`
+6. `CH_B_MEAS_THERMAL`
+7. `MCU_CONTROL_ISOLATION`
+8. `OUTPUT_SERIES_SYSTEM`
 
-## Out of scope for the current revision
+Documentation-only block diagrams must not be built from electrical wires/net labels inside the schematic because multi-sheet net naming can accidentally merge domains.
 
-The previously explored idea of using the supply as a bidirectional analog power amplifier / stereo or bridged signal amplifier is **archived for now**. It is not part of the current schematic baseline and should only be reconsidered if PCB area and thermal margin make the extra circuitry worthwhile.
+## Current design status
+
+The first production PCB is **not released**. Major remaining qualification includes:
+
+- XL4016 sourcing and integrated-buck characterization;
+- one-TIP36C SOA/foldback validation;
+- CV/CC compensation and stability;
+- 5–10 mA-class current measurement verification;
+- ≤25 mVpp ripple/noise validation;
+- reverse-energy/backfeed behavior;
+- thermal/heatsink/fan characterization;
+- series-mode relay/interlock tests;
+- isolated-I2C recovery and Channel-B fail-safe behavior.
+
+See [`docs/11-Bring-Up-and-Validation-Plan.md`](docs/11-Bring-Up-and-Validation-Plan.md).
+
+## Archived idea
+
+A future external analog-input / bidirectional power-amplifier mode was explored but is **not part of the current schematic baseline**. It may be reconsidered only after the normal power-supply PCB layout is known and spare area/thermal margin can be evaluated.
 
 ## License
 
